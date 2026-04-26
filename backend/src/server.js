@@ -10,6 +10,9 @@ const routes    = require('./routes');
 
 const app = express();
 
+// ── Trust proxy (required for Render/Railway/Heroku) ───────────
+app.set('trust proxy', 1);
+
 // ── DB ─────────────────────────────────────────────────────────
 connectDB();
 
@@ -23,8 +26,13 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limit on API
-app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
+// Rate limit
+app.use('/api', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 
 // ── Routes ─────────────────────────────────────────────────────
 app.use('/api', routes);
@@ -33,11 +41,10 @@ app.use('/api', routes);
 app.get('/', (req, res) => res.json({ message: '📚 Maktaba Huru API iko sawa!', env: process.env.NODE_ENV }));
 
 // ── Error handler ──────────────────────────────────────────────
-// eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(err.status || 500).json({ success: false, message: err.message || 'Kosa la seva.' });
+  res.status(err.status || 500).json({ success: false, message: err.message || 'Server error.' });
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Seva inaendesha kwenye http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
