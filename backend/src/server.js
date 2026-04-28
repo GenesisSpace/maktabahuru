@@ -10,23 +10,38 @@ const routes    = require('./routes');
 
 const app = express();
 
-// ── Trust proxy (required for Render/Railway/Heroku) ───────────
+// ── Trust proxy (required for Render) ──────────────────────────
 app.set('trust proxy', 1);
 
 // ── DB ─────────────────────────────────────────────────────────
 connectDB();
 
+// ── Allowed origins ────────────────────────────────────────────
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://maktabahuru.co.tz',
+  'https://www.maktabahuru.co.tz',
+  'https://maktabahuru.vercel.app',
+];
+
 // ── Middleware ─────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
   credentials: true,
 }));
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limit
+// ── Rate limit ─────────────────────────────────────────────────
 app.use('/api', rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
@@ -37,13 +52,19 @@ app.use('/api', rateLimit({
 // ── Routes ─────────────────────────────────────────────────────
 app.use('/api', routes);
 
-// ── Health ─────────────────────────────────────────────────────
-app.get('/', (req, res) => res.json({ message: '📚 Maktaba Huru API iko sawa!', env: process.env.NODE_ENV }));
+// ── Health check ───────────────────────────────────────────────
+app.get('/', (req, res) => res.json({
+  message: '📚 Maktaba Huru API iko sawa!',
+  env: process.env.NODE_ENV,
+}));
 
 // ── Error handler ──────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(err.status || 500).json({ success: false, message: err.message || 'Server error.' });
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Server error.',
+  });
 });
 
 const PORT = process.env.PORT || 5000;
