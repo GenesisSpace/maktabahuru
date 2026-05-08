@@ -80,7 +80,7 @@ export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
         subject: item.subject || SUBJECTS[0], type: item.type || 'book',
         format: item.format || 'pdf', classes: item.classes || [],
         ageMin: String(item.ageMin ?? 0), ageMax: String(item.ageMax ?? 99),
-        language: item.language || 'sw',
+        language: item.language || 'en',
         isForKids: item.isForKids || false, isFeatured: item.isFeatured || false,
         isPublished: item.isPublished || false,
         fileUrl: item.isExternal ? item.fileUrl : '', isExternal: item.isExternal || false,
@@ -186,8 +186,8 @@ export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
             <div>
               <label style={lbl}>Language</label>
               <select value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))} style={inp}>
-                <option value="sw">Kiswahili</option>
                 <option value="en">English</option>
+                <option value="sw">Kiswahili</option>
                 <option value="both">Both</option>
               </select>
             </div>

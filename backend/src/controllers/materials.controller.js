@@ -79,8 +79,6 @@ function parseBody(body, files) {
   if (files?.file?.[0])  body.fileUrl    = files.file[0].path;
   if (files?.cover?.[0]) body.coverImage = files.cover[0].path;
 
-  // ── If external URL provided and no file uploaded, keep fileUrl from body ──
-  // (body.fileUrl already set from form if isExternal === true)
 
   // ── Parse JSON arrays ──
   if (typeof body.classes === 'string') {

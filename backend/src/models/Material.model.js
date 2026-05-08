@@ -26,9 +26,10 @@ const SUBJECTS = [
   'Kompyuta',
   'Dini ya Kiislamu',
   'Elimu ya Dini',
-  'Hadithi za Watoto',
+  'Hadithi',
   'Nyimbo za Watoto',
   'Michezo',
+  'Riwaya na Tamthilia', 
 ];
 
 // ── Schema ──────────────────────────────────────────────────
@@ -45,8 +46,8 @@ const materialSchema = new mongoose.Schema(
     // 🔥 KEEP THIS (no change needed)
     language: { 
       type: String, 
-      enum: ['sw', 'en', 'both'], 
-      default: 'sw' 
+      enum: ['en', 'sw', 'both'], 
+      default: 'en' 
     },
 
     // Classification
