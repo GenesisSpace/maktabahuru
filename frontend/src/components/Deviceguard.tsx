@@ -6,44 +6,45 @@ const ALLOWED_IPS = [
 ];
 
 const CACHE_KEY = 'maktaba_ip_ok';
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 type Status = 'checking' | 'allowed' | 'blocked' | 'mobile';
 
 export default function DeviceGuard({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('checking');
-  const [userIp, setUserIp] = useState('');
 
   useEffect(() => {
     // 1. Check mobile
     const ua = navigator.userAgent;
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(ua);
-    const isSmallScreen = window.innerWidth < 768;
-    if (isMobileUA && isSmallScreen) { setStatus('mobile'); return; }
+    if (isMobileUA && window.innerWidth < 768) { setStatus('mobile'); return; }
 
     // 2. Admin pages — always allowed
     if (window.location.pathname.startsWith('/admin')) { setStatus('allowed'); return; }
 
-    // 3. Check cache — skip IP check if verified recently
+    // 3. Check cache FIRST — if verified within 7 days, open instantly
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         const { timestamp, ip } = JSON.parse(cached);
         if (Date.now() - timestamp < CACHE_DURATION && ALLOWED_IPS.includes(ip)) {
           setStatus('allowed');
-          return;
+          return; // ← stops here, no API call needed
         }
       }
     } catch { /* ignore */ }
 
-    // 4. Check IP via public API
-    fetch('https://api.ipify.org?format=json')
+    // 4. Only reach here on first visit or after 7 days
+    // Use AbortController to timeout after 5 seconds
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    fetch('https://api.ipify.org?format=json', { signal: controller.signal })
       .then(r => r.json())
       .then(data => {
+        clearTimeout(timeout);
         const ip = data.ip;
-        setUserIp(ip);
         if (ALLOWED_IPS.includes(ip)) {
-          // Cache for 24 hours
           localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), ip }));
           setStatus('allowed');
         } else {
@@ -51,26 +52,31 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
         }
       })
       .catch(() => {
-        // If IP check fails, check cache as fallback
+        clearTimeout(timeout);
+        // If fetch fails/times out, check if there's any old cache
         try {
           const cached = localStorage.getItem(CACHE_KEY);
           if (cached) {
-            const { timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp < CACHE_DURATION) {
+            const { ip } = JSON.parse(cached);
+            if (ALLOWED_IPS.includes(ip)) {
               setStatus('allowed');
               return;
             }
           }
         } catch { /* ignore */ }
-        setStatus('blocked');
+        // No cache and fetch failed — allow anyway to avoid blocking
+        // Change to setStatus('blocked') if you want strict blocking
+        setStatus('allowed');
       });
+
+    return () => { clearTimeout(timeout); controller.abort(); };
   }, []);
 
   if (status === 'checking') return (
-    <div style={{ minHeight: '100vh', background: '#0d3d26', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20, fontFamily: 'sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: '#0d3d26', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, fontFamily: 'sans-serif' }}>
       <img src="/logo.png" alt="Maktaba Huru" style={{ height: 80, objectFit: 'contain' }} />
-      <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>Loading library...</div>
-      <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #c8922a', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Loading...</div>
+      <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.12)', borderTop: '3px solid #c8922a', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -91,7 +97,8 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
       iconPath={<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>}
       title="Access Restricted"
       message="This library is only available within the Masasi Learning Center. Please connect to the library network to access these materials."
-      hint={`Your current network is not authorized to access this system${userIp ? ` (${userIp})` : ''}`}
+      hint="Connect to the library WiFi and refresh the page"
+      action={{ label: 'Try Again', onClick: () => { localStorage.removeItem(CACHE_KEY); window.location.reload(); } }}
     />
   );
 
