@@ -14,7 +14,10 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
   const [status, setStatus] = useState<Status>('checking');
 
   useEffect(() => {
-    // 1. Check mobile
+    // 1. Admin pages — always allowed FIRST
+    if (window.location.pathname.startsWith(`/admin`)) { setStatus(`allowed`); return; }
+
+    // 2. Check mobile
     const ua = navigator.userAgent;
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(ua);
     if (isMobileUA && window.innerWidth < 768) { setStatus('mobile'); return; }
