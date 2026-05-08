@@ -1,33 +1,18 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-const FENCE = {
-  lat: -10.71667,
-  lng: 38.8,
-  radiusMeters: 200,
-};
+const ALLOWED_IPS = [
+  '197.250.51.186', // Masasi Library
+];
 
-const CACHE_KEY = 'maktaba_location_ok';
-const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
+const CACHE_KEY = 'maktaba_ip_ok';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-function getDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-type Status = 'checking' | 'allowed' | 'outside' | 'mobile' | 'denied' | 'error';
+type Status = 'checking' | 'allowed' | 'blocked' | 'mobile';
 
 export default function DeviceGuard({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('checking');
-  const [distance, setDistance] = useState<number | null>(null);
+  const [userIp, setUserIp] = useState('');
 
   useEffect(() => {
     // 1. Check mobile
@@ -36,45 +21,55 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
     const isSmallScreen = window.innerWidth < 768;
     if (isMobileUA && isSmallScreen) { setStatus('mobile'); return; }
 
-    // 2. Admin pages bypass geofence
+    // 2. Admin pages — always allowed
     if (window.location.pathname.startsWith('/admin')) { setStatus('allowed'); return; }
 
-    // 3. Check cache — if verified recently, skip GPS check
+    // 3. Check cache — skip IP check if verified recently
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
-        const { timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION) {
+        const { timestamp, ip } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION && ALLOWED_IPS.includes(ip)) {
           setStatus('allowed');
           return;
         }
       }
     } catch { /* ignore */ }
 
-    // 4. Geolocation check
-    if (!navigator.geolocation) { setStatus('error'); return; }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const dist = getDistance(pos.coords.latitude, pos.coords.longitude, FENCE.lat, FENCE.lng);
-        setDistance(Math.round(dist));
-        if (dist <= FENCE.radiusMeters) {
-          // Save to cache so we don't ask again for 30 minutes
-          localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now() }));
+    // 4. Check IP via public API
+    fetch('https://api.ipify.org?format=json')
+      .then(r => r.json())
+      .then(data => {
+        const ip = data.ip;
+        setUserIp(ip);
+        if (ALLOWED_IPS.includes(ip)) {
+          // Cache for 24 hours
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), ip }));
           setStatus('allowed');
         } else {
-          setStatus('outside');
+          setStatus('blocked');
         }
-      },
-      (err) => setStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'error'),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-    );
+      })
+      .catch(() => {
+        // If IP check fails, check cache as fallback
+        try {
+          const cached = localStorage.getItem(CACHE_KEY);
+          if (cached) {
+            const { timestamp } = JSON.parse(cached);
+            if (Date.now() - timestamp < CACHE_DURATION) {
+              setStatus('allowed');
+              return;
+            }
+          }
+        } catch { /* ignore */ }
+        setStatus('blocked');
+      });
   }, []);
 
   if (status === 'checking') return (
     <div style={{ minHeight: '100vh', background: '#0d3d26', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20, fontFamily: 'sans-serif' }}>
       <img src="/logo.png" alt="Maktaba Huru" style={{ height: 80, objectFit: 'contain' }} />
-      <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>Verifying your location...</div>
+      <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>Loading library...</div>
       <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #c8922a', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
@@ -90,35 +85,13 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
     />
   );
 
-  if (status === 'denied') return (
-    <BlockPage
-      iconColor="#d97706" iconBg="#fffbeb"
-      iconPath={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>}
-      title="Location Access Required"
-      message="This library requires location access to verify you are within the authorized area. Please allow location access in your browser and refresh the page."
-      hint='Click the location icon in your browser address bar and select "Allow"'
-      action={{ label: 'Refresh Page', onClick: () => window.location.reload() }}
-    />
-  );
-
-  if (status === 'outside') return (
+  if (status === 'blocked') return (
     <BlockPage
       iconColor="#dc2626" iconBg="#fef2f2"
-      iconPath={<><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></>}
-      title="Outside Authorized Area"
-      message={`You are ${distance ? distance + ' meters' : 'too far'} from the authorized library zone. This system is only available within the Masasi learning center.`}
-      hint="Please visit the library in person to access these materials"
-    />
-  );
-
-  if (status === 'error') return (
-    <BlockPage
-      iconColor="#d97706" iconBg="#fffbeb"
-      iconPath={<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>}
-      title="Location Unavailable"
-      message="Could not determine your location. Please make sure location services are enabled and try again."
-      hint="Enable location services in your browser settings and refresh"
-      action={{ label: 'Try Again', onClick: () => { localStorage.removeItem(CACHE_KEY); window.location.reload(); } }}
+      iconPath={<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>}
+      title="Access Restricted"
+      message="This library is only available within the Masasi Learning Center. Please connect to the library network to access these materials."
+      hint={`Your current network is not authorized to access this system${userIp ? ` (${userIp})` : ''}`}
     />
   );
 
