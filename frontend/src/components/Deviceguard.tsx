@@ -1,10 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 
-// Add ALL possible IPs for your library network here
 const ALLOWED_IPS = [
   '197.250.51.186', // Masasi Library WiFi
-  // If you get a new IP, add it here
 ];
 
 const CACHE_KEY = 'maktaba_ip_ok';
@@ -16,13 +14,23 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
   const [status, setStatus] = useState<Status>('checking');
 
   useEffect(() => {
-    // STEP 1 — Admin pages always open, no checks
+    // STEP 1 — Always allow localhost (local development)
+    if (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.')
+    ) {
+      setStatus('allowed');
+      return;
+    }
+
+    // STEP 2 — Admin pages always open
     if (window.location.pathname.startsWith('/admin')) {
       setStatus('allowed');
       return;
     }
 
-    // STEP 2 — Block mobile
+    // STEP 3 — Block mobile
     const ua = navigator.userAgent;
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(ua);
     if (isMobileUA && window.innerWidth < 768) {
@@ -30,7 +38,7 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
       return;
     }
 
-    // STEP 3 — Check cache first (instant if verified within 7 days)
+    // STEP 4 — Check cache (instant if verified within 7 days)
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -42,8 +50,7 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
       }
     } catch { /* ignore */ }
 
-    // STEP 4 — Check IP (only on first visit or after 7 days)
-    // Use multiple IP services as fallback
+    // STEP 5 — Check IP (only on first visit or after 7 days)
     const checkIP = async () => {
       const services = [
         'https://api.ipify.org?format=json',
@@ -68,11 +75,10 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
             }
             return;
           }
-        } catch { /* try next service */ }
+        } catch { /* try next */ }
       }
 
-      // All services failed — allow access to avoid blocking library computers
-      // This handles cases where the network blocks these IP check services
+      // All services failed — allow to avoid blocking library computers
       localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), ip: 'unknown' }));
       setStatus('allowed');
     };

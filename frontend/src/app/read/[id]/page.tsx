@@ -186,7 +186,7 @@ export default function ReaderPage() {
           {mat.author && <p style={{ fontSize: 14, color: '#888', marginTop: 4 }}>by {mat.author}</p>}
         </div>
 
-        {/* Main layout */}
+        
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 250px', gap: 24, alignItems: 'start' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ background: 'white', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
@@ -194,7 +194,7 @@ export default function ReaderPage() {
             </div>
           </div>
 
-          {/* Sidebar */}
+          
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {mat.coverImage && mat.type !== 'video' && (
               <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
@@ -221,7 +221,7 @@ export default function ReaderPage() {
                 <p style={{ fontSize: 13, color: '#666', lineHeight: 1.7 }}>{mat.description}</p>
               </div>
             )}
-            {/* Help card */}
+            
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>Having trouble viewing?</div>
               <p style={{ fontSize: 11, color: '#78350f', lineHeight: 1.6 }}>

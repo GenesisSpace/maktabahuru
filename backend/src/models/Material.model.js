@@ -15,9 +15,9 @@ const SUBJECTS = [
   'Sanaa', 'Muziki', 'Kompyuta',
   'Dini ya Kiislamu', 'Elimu ya Dini',
   'Hadithi za Watoto', 'Nyimbo za Watoto', 'Michezo',
-  'Riwaya na Tamthilia',   // Novels & Plays (Swahili)
-  'Novel and Plays',       // Novels & Plays (English)
-  'Maswali ya Mtihani',    // Past Papers
+  'Riwaya na Tamthilia',   
+  'Novel and Plays',       
+  'Maswali ya Mtihani',    
 ];
 
 const materialSchema = new mongoose.Schema(
