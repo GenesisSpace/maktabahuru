@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
 
+// Add ALL possible IPs for your library network here
 const ALLOWED_IPS = [
-  '197.250.51.186', // Masasi Library
+  '197.250.51.186', // Masasi Library WiFi
+  // If you get a new IP, add it here
 ];
 
 const CACHE_KEY = 'maktaba_ip_ok';
@@ -14,71 +16,74 @@ export default function DeviceGuard({ children }: { children: React.ReactNode })
   const [status, setStatus] = useState<Status>('checking');
 
   useEffect(() => {
-    // 1. Admin pages — always allowed FIRST
-    if (window.location.pathname.startsWith(`/admin`)) { setStatus(`allowed`); return; }
+    // STEP 1 — Admin pages always open, no checks
+    if (window.location.pathname.startsWith('/admin')) {
+      setStatus('allowed');
+      return;
+    }
 
-    // 2. Check mobile
+    // STEP 2 — Block mobile
     const ua = navigator.userAgent;
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i.test(ua);
-    if (isMobileUA && window.innerWidth < 768) { setStatus('mobile'); return; }
+    if (isMobileUA && window.innerWidth < 768) {
+      setStatus('mobile');
+      return;
+    }
 
-    // 2. Admin pages — always allowed
-    if (window.location.pathname.startsWith('/admin')) { setStatus('allowed'); return; }
-
-    // 3. Check cache FIRST — if verified within 7 days, open instantly
+    // STEP 3 — Check cache first (instant if verified within 7 days)
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
-        const { timestamp, ip } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION && ALLOWED_IPS.includes(ip)) {
+        const { timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_DURATION) {
           setStatus('allowed');
-          return; // ← stops here, no API call needed
+          return;
         }
       }
     } catch { /* ignore */ }
 
-    // 4. Only reach here on first visit or after 7 days
-    // Use AbortController to timeout after 5 seconds
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    // STEP 4 — Check IP (only on first visit or after 7 days)
+    // Use multiple IP services as fallback
+    const checkIP = async () => {
+      const services = [
+        'https://api.ipify.org?format=json',
+        'https://api.my-ip.io/ip.json',
+        'https://ipapi.co/json/',
+      ];
 
-    fetch('https://api.ipify.org?format=json', { signal: controller.signal })
-      .then(r => r.json())
-      .then(data => {
-        clearTimeout(timeout);
-        const ip = data.ip;
-        if (ALLOWED_IPS.includes(ip)) {
-          localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), ip }));
-          setStatus('allowed');
-        } else {
-          setStatus('blocked');
-        }
-      })
-      .catch(() => {
-        clearTimeout(timeout);
-        // If fetch fails/times out, check if there's any old cache
+      for (const service of services) {
         try {
-          const cached = localStorage.getItem(CACHE_KEY);
-          if (cached) {
-            const { ip } = JSON.parse(cached);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 4000);
+          const r = await fetch(service, { signal: controller.signal });
+          clearTimeout(timeout);
+          const data = await r.json();
+          const ip = data.ip || data.IP || data.query;
+          if (ip) {
             if (ALLOWED_IPS.includes(ip)) {
+              localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), ip }));
               setStatus('allowed');
-              return;
+            } else {
+              setStatus('blocked');
             }
+            return;
           }
-        } catch { /* ignore */ }
-        // No cache and fetch failed — allow anyway to avoid blocking
-        // Change to setStatus('blocked') if you want strict blocking
-        setStatus('allowed');
-      });
+        } catch { /* try next service */ }
+      }
 
-    return () => { clearTimeout(timeout); controller.abort(); };
+      // All services failed — allow access to avoid blocking library computers
+      // This handles cases where the network blocks these IP check services
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), ip: 'unknown' }));
+      setStatus('allowed');
+    };
+
+    checkIP();
   }, []);
 
   if (status === 'checking') return (
     <div style={{ minHeight: '100vh', background: '#0d3d26', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, fontFamily: 'sans-serif' }}>
       <img src="/logo.png" alt="Maktaba Huru" style={{ height: 80, objectFit: 'contain' }} />
-      <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Loading...</div>
+      <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Loading library...</div>
       <div style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.12)', borderTop: '3px solid #c8922a', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>

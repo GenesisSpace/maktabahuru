@@ -13,63 +13,22 @@ const FORMATS_FOR: Record<string, string[]> = {
 
 interface Props { item: any; onClose: () => void; onSaved: () => void; }
 
-// ── Generate thumbnail from a video file ──────────────────────
-function generateVideoThumbnail(videoFile: File): Promise<File> {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    const url   = URL.createObjectURL(videoFile);
-    video.src      = url;
-    video.muted    = true;
-    video.playsInline = true;
-    video.crossOrigin = 'anonymous';
-
-    video.addEventListener('loadeddata', () => {
-      // Seek to 2 seconds (or 10% through the video) for a good frame
-      video.currentTime = Math.min(2, video.duration * 0.1);
-    });
-
-    video.addEventListener('seeked', () => {
-      const canvas = document.createElement('canvas');
-      canvas.width  = 640;
-      canvas.height = Math.round(640 * (video.videoHeight / video.videoWidth));
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error('Canvas not supported')); return; }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-
-      canvas.toBlob((blob) => {
-        if (!blob) { reject(new Error('Failed to generate thumbnail')); return; }
-        const thumbFile = new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' });
-        resolve(thumbFile);
-      }, 'image/jpeg', 0.85);
-    });
-
-    video.addEventListener('error', () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Could not load video'));
-    });
-
-    video.load();
-  });
-}
-
 export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
   const isEdit = !!item;
   const [form, setForm] = useState({
     title: '', titleSw: '', description: '', author: '',
     subject: SUBJECTS[0], type: 'book',
     format: 'pdf', classes: [] as string[],
-    ageMin: '0', ageMax: '99', language: 'sw',
+    ageMin: '0', ageMax: '99',
+    language: 'en',          // ← DEFAULT IS ENGLISH
     isForKids: false, isFeatured: false, isPublished: false,
     fileUrl: '', isExternal: false,
   });
-  const [file,          setFile]          = useState<File | null>(null);
-  const [cover,         setCover]         = useState<File | null>(null);
-  const [thumbPreview,  setThumbPreview]  = useState<string | null>(null);
-  const [thumbLoading,  setThumbLoading]  = useState(false);
-  const [loading,       setLoading]       = useState(false);
-  const [error,         setError]         = useState('');
-  const fileRef  = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [cover, setCover] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -80,42 +39,13 @@ export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
         subject: item.subject || SUBJECTS[0], type: item.type || 'book',
         format: item.format || 'pdf', classes: item.classes || [],
         ageMin: String(item.ageMin ?? 0), ageMax: String(item.ageMax ?? 99),
-        language: item.language || 'en',
+        language: item.language || 'en',   // ← default English on edit too
         isForKids: item.isForKids || false, isFeatured: item.isFeatured || false,
         isPublished: item.isPublished || false,
         fileUrl: item.isExternal ? item.fileUrl : '', isExternal: item.isExternal || false,
       });
-      // Show existing cover as preview
-      if (item.coverImage) setThumbPreview(item.coverImage);
     }
   }, [item]);
-
-  // ── Auto-generate thumbnail when a video file is selected ────
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] || null;
-    setFile(selected);
-
-    if (selected && form.type === 'video' && selected.type.startsWith('video/')) {
-      setThumbLoading(true);
-      setThumbPreview(null);
-      try {
-        const thumb = await generateVideoThumbnail(selected);
-        setCover(thumb);
-        setThumbPreview(URL.createObjectURL(thumb));
-      } catch (err) {
-        console.warn('Thumbnail generation failed:', err);
-      } finally {
-        setThumbLoading(false);
-      }
-    }
-  };
-
-  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] || null;
-    setCover(selected);
-    if (selected) setThumbPreview(URL.createObjectURL(selected));
-    else setThumbPreview(null);
-  };
 
   const toggleClass = (c: string) => {
     setForm(f => ({ ...f, classes: f.classes.includes(c) ? f.classes.filter(x => x !== c) : [...f.classes, c] }));
@@ -131,7 +61,7 @@ export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
         if (Array.isArray(v)) fd.append(k, JSON.stringify(v));
         else fd.append(k, String(v));
       });
-      if (file)  fd.append('file',  file);
+      if (file)  fd.append('file', file);
       if (cover) fd.append('cover', cover);
       if (isEdit) {
         await api.put(`/admin/materials/${item._id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -234,81 +164,21 @@ export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
                 <label style={lbl}>Upload File {!isEdit && '*'}</label>
-                <input ref={fileRef} type="file"
-                  onChange={handleFileChange}
-                  style={{ display: 'none' }}
-                  accept=".pdf,.epub,.mp4,.webm,.mp3,.ogg,.wav" />
+                <input ref={fileRef} type="file" onChange={e => setFile(e.target.files?.[0] || null)}
+                  style={{ display: 'none' }} accept=".pdf,.epub,.mp4,.mp3,.ogg" />
                 <button type="button" onClick={() => fileRef.current?.click()}
                   style={{ width: '100%', border: '2px dashed #e5e7eb', borderRadius: 8, padding: '12px', fontSize: 13, color: '#888', background: 'white', cursor: 'pointer', textAlign: 'center' }}>
                   {file ? file.name : isEdit ? 'Replace file (optional)' : 'Choose file'}
                 </button>
               </div>
-
-              {/* Cover / Thumbnail */}
               <div>
-                <label style={lbl}>
-                  {form.type === 'video' ? 'Thumbnail' : 'Cover Image'}
-                  <span style={{ fontWeight: 400, color: '#aaa', marginLeft: 4 }}>(optional)</span>
-                </label>
-                <input ref={coverRef} type="file"
-                  onChange={handleCoverChange}
+                <label style={lbl}>Cover Image (optional)</label>
+                <input ref={coverRef} type="file" onChange={e => setCover(e.target.files?.[0] || null)}
                   style={{ display: 'none' }} accept="image/*" />
-
-                {/* Preview box */}
-                <div
-                  onClick={() => coverRef.current?.click()}
-                  style={{ width: '100%', border: '2px dashed #e5e7eb', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#fafafa', minHeight: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-
-                  {thumbLoading ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: 12 }}>
-                      <div style={{ width: 20, height: 20, border: '2px solid #1d4ed8', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                      <span style={{ fontSize: 11, color: '#888' }}>Generating thumbnail...</span>
-                    </div>
-                  ) : thumbPreview ? (
-                    <>
-                      <img src={thumbPreview} alt="Thumbnail preview"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                      {/* Play icon overlay for video */}
-                      {form.type === 'video' && (
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)' }}>
-                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="#1d4ed8"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                          </div>
-                        </div>
-                      )}
-                      <div style={{ position: 'absolute', bottom: 4, right: 4, background: 'rgba(0,0,0,0.55)', color: 'white', fontSize: 9, padding: '2px 6px', borderRadius: 4 }}>
-                        Click to change
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 12, color: '#aaa' }}>
-                      {form.type === 'video' ? (
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="m16 8-4 4-4-4"/></svg>
-                      ) : (
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-                      )}
-                      <span style={{ fontSize: 11 }}>
-                        {form.type === 'video' ? 'Auto-generated from video' : 'Choose image'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* For external video — show manual thumbnail upload */}
-          {form.isExternal && form.type === 'video' && (
-            <div>
-              <label style={lbl}>Thumbnail <span style={{ fontWeight: 400, color: '#aaa' }}>(optional)</span></label>
-              <input ref={coverRef} type="file" onChange={handleCoverChange} style={{ display: 'none' }} accept="image/*" />
-              <div onClick={() => coverRef.current?.click()}
-                style={{ border: '2px dashed #e5e7eb', borderRadius: 8, overflow: 'hidden', cursor: 'pointer', background: '#fafafa', minHeight: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {thumbPreview ? (
-                  <img src={thumbPreview} alt="Thumbnail" style={{ width: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <span style={{ fontSize: 12, color: '#aaa', padding: 12 }}>Click to upload thumbnail image</span>
-                )}
+                <button type="button" onClick={() => coverRef.current?.click()}
+                  style={{ width: '100%', border: '2px dashed #e5e7eb', borderRadius: 8, padding: '12px', fontSize: 13, color: '#888', background: 'white', cursor: 'pointer', textAlign: 'center' }}>
+                  {cover ? cover.name : 'Choose image'}
+                </button>
               </div>
             </div>
           )}
@@ -342,7 +212,11 @@ export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
 
           {/* Toggles */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
-            {([['isForKids', 'For Young Children (under 6)'], ['isFeatured', 'Featured Material'], ['isPublished', 'Publish Now']] as [string, string][]).map(([key, label]) => (
+            {([
+              ['isForKids', 'For Young Children (under 6)'],
+              ['isFeatured', 'Featured Material'],
+              ['isPublished', 'Publish Now'],
+            ] as [string, string][]).map(([key, label]) => (
               <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#444' }}>
                 <input type="checkbox" checked={(form as any)[key]}
                   onChange={e => setForm(f => ({ ...f, [key]: e.target.checked }))}
@@ -364,9 +238,6 @@ export default function AddMaterialModal({ item, onClose, onSaved }: Props) {
             </button>
           </div>
         </form>
-
-        {/* Spinner animation */}
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
   );
